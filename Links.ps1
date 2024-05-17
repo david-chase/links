@@ -31,11 +31,11 @@ do {
     switch( $sCommand ) {
         "?" {
             Write-Host 
-            Write-Host "add" -ForegroundColor Cyan
-            Write-Host "find" -ForegroundColor Cyan
+            Write-Host "add [link]" -ForegroundColor Cyan
+            Write-Host "find [link]" -ForegroundColor Cyan
             Write-Host "quit" -ForegroundColor Cyan
-            Write-Host "update" -ForegroundColor Cyan
-            Write-Host "verbose" -ForegroundColor Cyan
+            Write-Host "update [link]" -ForegroundColor Cyan
+            Write-Host "verbose [string1]&[string2]&[string3]" -ForegroundColor Cyan
         } # END Case ?
        
         { ( $_ -eq "a" ) -or ( $_ -eq "add" ) } { 
@@ -92,9 +92,7 @@ do {
                 $sTitle = $aResults[ 0 ].title
                 $sInput = Read-Host -Prompt "Enter title [$sTitle]"
                 # Set $sLink to what I just entered if anything, otherwise use the previous value
-                if( $sInput ) { $sLink = $sInput }
-
-
+                if( $sInput ) { $sTitle = $sInput }
 
                 $sTags = $aResults[ 0 ].tags
                 $sInput = Read-Host -Prompt "Enter tags [$sTags]"
@@ -106,10 +104,17 @@ do {
                     $aInput = $sInput.Split( "+", 2 )
                     if( $aInput.Count -eq 2 ) {
                         $sTags = $sTags + $aInput[ 1 ]
-                    } # END if( $aTags.Count -eq 2 )     
+                    } # END if( $aTags.Count -eq 2 )
                     else {
-                        $sTags = $sInput 
-                    }              
+                        # A silly little hack such that if you type -#tags it will delete them rather than overwrite
+                        $aInput = $sInput.Split( "-", 2 )
+                        if( $aInput.Count -eq 2 ) {
+                            $sTags = $sTags.replace( $aInput[ 1 ], '' )
+                        } # END if( $aTags.Count -eq 2 )  
+                        else{ 
+                            $sTags = $sInput
+                        } # END if( $aTags.Count -eq 2 )  
+                    } 
 
                 } # if( $sInput )
 
@@ -163,6 +168,10 @@ do {
         Write-Host $aResults.Count matches... -ForegroundColor Cyan
 
         } # END Case verbose
+
+        { $_ -eq "addtag" } {
+            Write-Host $aResults.Count
+        } # END { $_ -eq "addtag" }
 
     } # END switch( $sCommand )
 
