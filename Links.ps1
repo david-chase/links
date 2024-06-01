@@ -1,6 +1,6 @@
 #-------------------------------------------------------------------
 #  Links
-#  Manage a CosmosDB of links
+#  Manage a CosmosDB database of links
 #-------------------------------------------------------------------
 
 $sSharedFunctions = $env:SharedFunctions
