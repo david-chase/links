@@ -6,7 +6,7 @@
 $sSharedFunctions = $env:SharedFunctions
 Push-Location $sSharedFunctions
 . ".\General Functions v1.ps1"
-. ".\CosmosDB Functions v2.ps1"
+. ".\CosmosDB Functions v3.ps1"
 . ".\Tags Functions v1.ps1"
 Pop-Location
 
@@ -25,6 +25,7 @@ foreach( $oBookmark in $bookmarks ) {
 }
 
 $sOutput = $bookmarks | Select-Object -Property title, @{Name='url'; Expression='link'}, tags | Sort-Object -Property title | ConvertTo-Json
+# $sOutput = $bookmarks | Select-Object -Property title, @{Name='url'; Expression='link'}, tags | ConvertTo-Json
 $sOutput = '{  "bookmarks": ' + $sOutput + ' }'
 $sOutFile = $env:DataFiles + "\bookmarks.json"
 $sOutput | Out-File $sOutFile

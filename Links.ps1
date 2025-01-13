@@ -6,7 +6,7 @@
 $sSharedFunctions = $env:SharedFunctions
 Push-Location $sSharedFunctions
 . ".\General Functions v1.ps1"
-. ".\CosmosDB Functions v2.ps1"
+. ".\CosmosDB Functions v3.ps1"
 . ".\Tags Functions v1.ps1"
 Pop-Location
 
@@ -29,6 +29,9 @@ do {
     } # END if( $sInput.Contains( " " ) )
 
     switch( $sCommand ) {
+        # ---------------------------------------
+        #  Help
+        # ---------------------------------------
         "?" {
             Write-Host 
             Write-Host "add [link]" -ForegroundColor Cyan
@@ -38,6 +41,9 @@ do {
             Write-Host "verbose [string1]&[string2]&[string3]" -ForegroundColor Cyan
         } # END Case ?
        
+        # ---------------------------------------
+        #  Add a link
+        # ---------------------------------------
         { ( $_ -eq "a" ) -or ( $_ -eq "add" ) } { 
             if( $sParam ) {
                 # Query the database so there are no duplicates
@@ -68,6 +74,9 @@ do {
             $aResults | Out-Host
         } # END Case acount #>
 
+        # ---------------------------------------
+        #  Find and display one record per line
+        # ---------------------------------------
         { ( $_ -eq "f" ) -or ( $_ -eq "find" ) } {
             $sQuery = "SELECT * FROM " + $sCollection + " c WHERE CONTAINS( c.link, '" + $sParam + "', true )"
             $aResults = Query-CosmosDb -EndPoint $sDBEndpoint -DBName $sDBName -Collection $sCollection -Key $sReadOnlyKey -Query $sQuery
@@ -75,10 +84,16 @@ do {
             Write-Host $aResults.Count matches... -ForegroundColor Cyan
         } # END Case find
 
+        # ---------------------------------------
+        #  Quit
+        # ---------------------------------------
         { ( $_ -eq "q" ) -or ( $_ -eq "quit" ) } {
             $bExit = $true 
         } # END Case quit      
 
+        # ---------------------------------------
+        # Update a link
+        # ---------------------------------------
         { ( $_ -eq "u" ) -or ( $_ -eq "update" ) } { 
             if( $sParam ) {
                 # Query the database so there are no duplicates
@@ -132,6 +147,9 @@ do {
             { Write-Host "u (Update) command requires a parameter" -ForegroundColor Red }
         } # END Case add
 
+        # ---------------------------------------
+        #  Find and display a verbose record
+        # ---------------------------------------
         { ( $_ -eq "v" ) -or ( $_ -eq "verbose" ) } {
             # To support multiple queries we'll start by doing the first query direct to the database.  Then we remove results in-memory.
             $iParamNum = 0
@@ -169,9 +187,29 @@ do {
 
         } # END Case verbose
 
+        # ---------------------------------------
+        #  Add a tag in bulk - this is a placeholder
+        # ---------------------------------------
         { $_ -eq "addtag" } {
             Write-Host $aResults.Count
         } # END { $_ -eq "addtag" }
+
+        # ---------------------------------------
+        #  Delete a Link
+        # ---------------------------------------
+        { ( $_ -eq "d" ) -or ( $_ -eq "delete" ) } {
+            # Only proceed if a parameter has been supplied
+            if( $sParam ) {
+                # Query the database so there are no duplicates
+                $sQuery = "SELECT * FROM " + $sCollection + " c WHERE c.link='" + $sParam + "'"
+                $aResults = Query-CosmosDb -EndPoint $sDBEndpoint -DBName $sDBName -Collection $sCollection -Key $sReadOnlyKey -Query $sQuery
+                if( -not $aResults.Count ) { Write-Host "No record matching $sParam" -ForegroundColor Red; Break }
+                if( $aResults.Count -gt 1 ) { Write-Host "Multiple records matching $sParam" -ForegroundColor Red; Break }
+                
+                $aResults = Remove-CosmosDb -EndPoint $sDBEndpoint -DBName $sDBName -Collection $sCollection -Key $sReadWriteKey -PartitionKey $aResults.link -DocId $aResults.id           
+            } else 
+            { Write-Host "d (Delete) command requires a parameter" -ForegroundColor Red }
+        } # END ( $_ -eq "d" ) -or ( $_ -eq "delete" )
 
     } # END switch( $sCommand )
 
