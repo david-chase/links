@@ -27,5 +27,5 @@ foreach( $oBookmark in $bookmarks ) {
 $sOutput = $bookmarks | Select-Object -Property title, @{Name='url'; Expression='link'}, tags | Sort-Object -Property title | ConvertTo-Json
 # $sOutput = $bookmarks | Select-Object -Property title, @{Name='url'; Expression='link'}, tags | ConvertTo-Json
 $sOutput = '{  "bookmarks": ' + $sOutput + ' }'
-$sOutFile = $env:DataFiles + "\bookmarks.json"
+$sOutFile = $env:DataFiles + [IO.Path]::DirectorySeparatorChar + "bookmarks.json"
 $sOutput | Out-File $sOutFile
