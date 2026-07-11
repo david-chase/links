@@ -1,17 +1,51 @@
 #-------------------------------------------------------------------
 #  Links
-#  Manage a CosmosDB database of links
+#  Manage a JSON file of links
 #-------------------------------------------------------------------
 
 $sSharedFunctions = $env:SharedFunctions
 Push-Location $sSharedFunctions
 . ".\General Functions v1.ps1"
-. ".\CosmosDB Functions v3.ps1"
 . ".\Tags Functions v1.ps1"
 Pop-Location
 
 $bExit = $false
-$sCollection = "Links"
+$sDataFile = $env:DataFiles + [IO.Path]::DirectorySeparatorChar + "bookmarks.json"
+
+# ---------------------------------------
+#  Load all links from the JSON file into memory
+# ---------------------------------------
+function Get-BookmarksData {
+    if( ( Test-Path -Path $sDataFile ) -and ( ( Get-Item -Path $sDataFile ).Length -gt 0 ) ) {
+        $oJson = Get-Content -Path $sDataFile -Raw | ConvertFrom-Json
+        if( $oJson.links ) { $aData = @( $oJson.links ) } else { $aData = @() }
+    } else {
+        $aData = @()
+    } # END if( Test-Path )
+    return , $aData
+} # END function Get-BookmarksData
+
+# ---------------------------------------
+#  Save all links back out to the JSON file
+# ---------------------------------------
+function Save-BookmarksData {
+    param( [Parameter(Mandatory)] $aData )
+    $oOutput = [PSCustomObject]@{ links = @( $aData ) }
+    $oOutput | ConvertTo-Json -Depth 5 | Set-Content -Path $sDataFile -Encoding utf8
+} # END function Save-BookmarksData
+
+# ---------------------------------------
+#  Turn a raw tag entry string (# delimited, no spaces) into a sorted,
+#  lowercase array of tags, e.g. "#Zabbix#Product" -> @( "#product", "#zabbix" )
+# ---------------------------------------
+function ConvertTo-TagArray {
+    param( [string]$sTagString )
+    $aRawTags = $sTagString -split '#' | Where-Object { $_ -ne '' }
+    $aTags = @( $aRawTags | ForEach-Object { '#' + $_.Trim().ToLower() } | Sort-Object )
+    return , $aTags
+} # END function ConvertTo-TagArray
+
+$aLinks = Get-BookmarksData
 
 do {
     #cls
@@ -34,10 +68,10 @@ do {
         # ---------------------------------------
         "?" {
             Write-Host 
-            Write-Host "add [link]" -ForegroundColor Cyan
-            Write-Host "find [link]" -ForegroundColor Cyan
+            Write-Host "add [url]" -ForegroundColor Cyan
+            Write-Host "find [url]" -ForegroundColor Cyan
             Write-Host "quit" -ForegroundColor Cyan
-            Write-Host "update [link]" -ForegroundColor Cyan
+            Write-Host "update [url]" -ForegroundColor Cyan
             Write-Host "verbose [string1]&[string2]&[string3]" -ForegroundColor Cyan
         } # END Case ?
        
@@ -46,41 +80,32 @@ do {
         # ---------------------------------------
         { ( $_ -eq "a" ) -or ( $_ -eq "add" ) } { 
             if( $sParam ) {
-                # Query the database so there are no duplicates
-                $sQuery = "SELECT * FROM " + $sCollection + " c WHERE c.link='" + $sParam + "'"
-                $aResults = Query-CosmosDb -EndPoint $sDBEndpoint -DBName $sDBName -Collection $sCollection -Key $sReadOnlyKey -Query $sQuery
+                # Verify the url is unique before adding
+                $aResults = @( $aLinks | Where-Object { $_.url -eq $sParam } )
                 if( $aResults.Count ) { Write-Host "$sParam already exists" -ForegroundColor Red; Break }
                 
-                $sLink = $sParam
+                $sUrl = $sParam
                 do { $sTitle = Read-Host -Prompt "Enter title" } while( -not $sTitle )
-                do { $sTags = Read-Host -Prompt "Enter tags" } while( -not $sTags )
-                $sTags = CleanTagString $sTags
-                $sJson = @"
-{
-    `"id`" : `"$([Guid]::NewGuid().ToString())`",
-    `"link`": `"$sLink`",
-    `"title`": `"$sTitle`",
-    `"tags`": `"$sTags`"
-}
-"@ # This can't be preceded by whitespace
-                $aResults = Post-CosmosDb -EndPoint $sDBEndpoint -DBName $sDBName -Collection $sCollection -Key $sReadWriteKey -DocumentBody $sJson -PartitionKey $sLink
+                do { $sTagString = Read-Host -Prompt "Enter tags" } while( -not $sTagString )
+                $aTags = ConvertTo-TagArray -sTagString $sTagString
+
+                $oNewRecord = [PSCustomObject]@{
+                    title = $sTitle
+                    url   = $sUrl
+                    tags  = $aTags
+                }
+                $aLinks = @( $aLinks ) + $oNewRecord
+                Save-BookmarksData -aData $aLinks
             } else 
             { Write-Host "a (Add) command requires a parameter" -ForegroundColor Red }
         } # END Case add
-
-        <# { ( $_ -eq "c" ) -or ( $_ -eq "count" ) } {
-            $sQuery = "SELECT VALUE COUNT(1) FROM c"
-            $aResults = Count-CosmosDb -EndPoint $sDBEndpoint -DBName $sDBName -Collection $sCollection -Key $sReadOnlyKey -Query $sQuery
-            $aResults | Out-Host
-        } # END Case acount #>
 
         # ---------------------------------------
         #  Find and display one record per line
         # ---------------------------------------
         { ( $_ -eq "f" ) -or ( $_ -eq "find" ) } {
-            $sQuery = "SELECT * FROM " + $sCollection + " c WHERE CONTAINS( c.link, '" + $sParam + "', true )"
-            $aResults = Query-CosmosDb -EndPoint $sDBEndpoint -DBName $sDBName -Collection $sCollection -Key $sReadOnlyKey -Query $sQuery
-            $aResults | Select-Object -Property title, link, tags | Sort-Object -Property title | Out-Host
+            $aResults = @( $aLinks | Where-Object { $_.url -like "*$sParam*" } )
+            $aResults | Select-Object -Property title, url, @{ Name = "tags"; Expression = { $_.tags -join '' } } | Sort-Object -Property title | Out-Host
             Write-Host $aResults.Count matches... -ForegroundColor Cyan
         } # END Case find
 
@@ -96,53 +121,44 @@ do {
         # ---------------------------------------
         { ( $_ -eq "u" ) -or ( $_ -eq "update" ) } { 
             if( $sParam ) {
-                # Query the database so there are no duplicates
-                $sQuery = "SELECT * FROM " + $sCollection + " c WHERE c.link='" + $sParam + "'"
-                $aResults = Query-CosmosDb -EndPoint $sDBEndpoint -DBName $sDBName -Collection $sCollection -Key $sReadOnlyKey -Query $sQuery
+                # Locate the record by url so there are no duplicates
+                $aResults = @( $aLinks | Where-Object { $_.url -eq $sParam } )
                 if( -not $aResults.Count ) { Write-Host "No record matching $sParam" -ForegroundColor Red; Break }
                 if( $aResults.Count -gt 1 ) { Write-Host "Multiple records matching $sParam" -ForegroundColor Red; Break }
                 
-                $sId = $aResults[ 0 ].id
-                $sLink = $sParam
-                $sTitle = $aResults[ 0 ].title
+                $oRecord = $aResults[ 0 ]
+                $sTitle = $oRecord.title
                 $sInput = Read-Host -Prompt "Enter title [$sTitle]"
-                # Set $sLink to what I just entered if anything, otherwise use the previous value
+                # Set $sTitle to what I just entered if anything, otherwise use the previous value
                 if( $sInput ) { $sTitle = $sInput }
 
-                $sTags = $aResults[ 0 ].tags
-                $sInput = Read-Host -Prompt "Enter tags [$sTags]"
+                $sTagString = ( $oRecord.tags -join '' )
+                $sInput = Read-Host -Prompt "Enter tags [$sTagString]"
                 
-                # Set $sTags to what I just entered if anything, otherwise use the previous value
+                # Set $sTagString to what I just entered if anything, otherwise use the previous value
                 if( $sInput ) { 
 
                     # A silly little hack such that if you type +#tags it will add them rather than overwrite
                     $aInput = $sInput.Split( "+", 2 )
                     if( $aInput.Count -eq 2 ) {
-                        $sTags = $sTags + $aInput[ 1 ]
+                        $sTagString = $sTagString + $aInput[ 1 ]
                     } # END if( $aTags.Count -eq 2 )
                     else {
                         # A silly little hack such that if you type -#tags it will delete them rather than overwrite
                         $aInput = $sInput.Split( "-", 2 )
                         if( $aInput.Count -eq 2 ) {
-                            $sTags = $sTags.replace( $aInput[ 1 ], '' )
+                            $sTagString = $sTagString.replace( $aInput[ 1 ], '' )
                         } # END if( $aTags.Count -eq 2 )  
                         else{ 
-                            $sTags = $sInput
+                            $sTagString = $sInput
                         } # END if( $aTags.Count -eq 2 )  
                     } 
 
                 } # if( $sInput )
 
-                $sTags = CleanTagString $sTags
-                $sJson = @"
-{
-    `"id`" : `"$sId`",
-    `"link`": `"$sLink`",
-    `"title`": `"$sTitle`",
-    `"tags`": `"$sTags`"
-}
-"@ # This can't be preceded by whitespace
-                $aResults = Post-CosmosDb -EndPoint $sDBEndpoint -DBName $sDBName -Collection $sCollection -Key $sReadWriteKey -DocumentBody $sJson -PartitionKey $sLink
+                $oRecord.title = $sTitle
+                $oRecord.tags  = ConvertTo-TagArray -sTagString $sTagString
+                Save-BookmarksData -aData $aLinks
             } else 
             { Write-Host "u (Update) command requires a parameter" -ForegroundColor Red }
         } # END Case add
@@ -151,7 +167,7 @@ do {
         #  Find and display a verbose record
         # ---------------------------------------
         { ( $_ -eq "v" ) -or ( $_ -eq "verbose" ) } {
-            # To support multiple queries we'll start by doing the first query direct to the database.  Then we remove results in-memory.
+            # To support multiple queries we'll start by filtering the in-memory data.  Then we remove results in-memory.
             $iParamNum = 0
             $aParams = $sParam.Split( '&' )
             # Now lets do some cleanup of our parameters
@@ -161,12 +177,11 @@ do {
                 $sParam = $sParam.Trim( ' ' )
                 $sParam = $sParam.Trim( '"' )
             
-                # If this is our very first parameter, query the database
+                # If this is our very first parameter, filter the full data set
                 if( $iParamNum -eq 1 ) { 
-                    $sQuery = "SELECT * FROM " + $sCollection + " c WHERE CONTAINS( c.link, '" + $sParam + "', true ) OR CONTAINS( c.title, '" + $sParam + "', true ) OR CONTAINS( c.tags, '" + $sParam + "', true )"
-                    $aResults = Query-CosmosDb -EndPoint $sDBEndpoint -DBName $sDBName -Collection $sCollection -Key $sReadOnlyKey -Query $sQuery | Sort-Object -Property title
+                    $aResults = @( $aLinks | Where-Object { ( $_.url -like "*$sParam*" ) -or ( $_.title -like "*$sParam*" ) -or ( ( $_.tags -join '' ) -like "*$sParam*" ) } | Sort-Object -Property title )
                 } else {
-                    $aResults = $aResults | Where-Object { ( $_.title -CMatch $sParam ) -or ( $_.link -CMatch $sParam ) -or ( $_.tags -CMatch $sParam ) }
+                    $aResults = $aResults | Where-Object { ( $_.title -CMatch $sParam ) -or ( $_.url -CMatch $sParam ) -or ( ( $_.tags -join '' ) -CMatch $sParam ) }
                 }
 
             } # END foreach( $sParam in $aParams )
@@ -176,10 +191,10 @@ do {
             foreach( $oResult in $aResults ) {
                 Write-Host "title: " -NoNewline -ForegroundColor Green
                 Write-Host $oResult.title
-                Write-Host "link:  " -NoNewline -ForegroundColor Gree
-                Write-Host $oResult.link
+                Write-Host "url:   " -NoNewline -ForegroundColor Green
+                Write-Host $oResult.url
                 Write-Host "tags:  " -NoNewline -ForegroundColor Green
-                Write-Host $oResult.tags
+                Write-Host ( $oResult.tags -join '' )
                 Write-Host
             } # END foreach( $oResult in $aResults )
 
@@ -199,32 +214,15 @@ do {
         # ---------------------------------------
         { ( $_ -eq "d" ) -or ( $_ -eq "delete" ) } {
             # Only proceed if a parameter has been supplied
-            if ( -not $sParam ) { 
-                Write-Host "Usage: del <url>" -ForegroundColor Yellow
-                break 
-            }
-
-            $query = "SELECT * FROM c WHERE c.link = '$sParam'"
-            $docs = Query-CosmosDb -EndPoint $global:sDBEndpoint `
-                                   -DBName $global:sDBName `
-                                   -Collection $sCollection `
-                                   -Key $global:sReadOnlyKey `
-                                   -Query $query
-
-            if ( $docs.Count -eq 0 ) { 
-                Write-Host "No matching link found: $sParam" -ForegroundColor Red 
-            } else { 
-                $doc = $docs[0]
-                Remove-CosmosDb -EndPoint $global:sDBEndpoint `
-                                -DBName $global:sDBName `
-                                -Collection $sCollection `
-                                -Key $global:sReadWriteKey `
-                                -PartitionKey $sParam `
-                                -DocId $doc.id
-                Write-Host "Link deleted: $sParam" -ForegroundColor Green 
+            if( $sParam ) {
+                $aResults = @( $aLinks | Where-Object { $_.url -eq $sParam } )
+                if( -not $aResults.Count ) { Write-Host "No record matching $sParam" -ForegroundColor Red; Break }
+                if( $aResults.Count -gt 1 ) { Write-Host "Multiple records matching $sParam" -ForegroundColor Red; Break }
                 
-            } # END if ( $docs.Count -eq 0 )
-
+                $aLinks = @( $aLinks | Where-Object { $_.url -ne $sParam } )
+                Save-BookmarksData -aData $aLinks
+            } else 
+            { Write-Host "d (Delete) command requires a parameter" -ForegroundColor Red }
         } # END ( $_ -eq "d" ) -or ( $_ -eq "delete" )
 
     } # END switch( $sCommand )
