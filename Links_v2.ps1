@@ -1,5 +1,5 @@
 #-------------------------------------------------------------------
-#  Links v2.0
+#  Links
 #  Manage a JSON file of links
 #-------------------------------------------------------------------
 
@@ -18,7 +18,7 @@ $sDataFile = $env:DataFiles + [IO.Path]::DirectorySeparatorChar + "bookmarks.jso
 function Get-BookmarksData {
     if( ( Test-Path -Path $sDataFile ) -and ( ( Get-Item -Path $sDataFile ).Length -gt 0 ) ) {
         $oJson = Get-Content -Path $sDataFile -Raw | ConvertFrom-Json
-        if( $oJson.links ) { $aData = @( $oJson.links ) } else { $aData = @() }
+        if( $oJson.bookmarks ) { $aData = @( $oJson.bookmarks ) } else { $aData = @() }
     } else {
         $aData = @()
     } # END if( Test-Path )
@@ -30,7 +30,7 @@ function Get-BookmarksData {
 # ---------------------------------------
 function Save-BookmarksData {
     param( [Parameter(Mandatory)] $aData )
-    $oOutput = [PSCustomObject]@{ links = @( $aData ) }
+    $oOutput = [PSCustomObject]@{ bookmarks = @( $aData ) }
     $oOutput | ConvertTo-Json -Depth 5 | Set-Content -Path $sDataFile -Encoding utf8
 } # END function Save-BookmarksData
 
@@ -50,7 +50,7 @@ $aLinks = Get-BookmarksData
 do {
     #cls
     Write-Host 
-    Write-Host ::: Links v2.0 ::: -ForegroundColor Cyan
+    Write-Host ::: Links ::: -ForegroundColor Cyan
     Write-Host 
     $sParam = ""
 
