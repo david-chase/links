@@ -50,7 +50,7 @@ $aLinks = Get-BookmarksData
 do {
     #cls
     Write-Host 
-    Write-Host ::: Links ::: -ForegroundColor Cyan
+    Write-Host ::: Links v2.0 ::: -ForegroundColor Cyan
     Write-Host 
     $sParam = ""
 
